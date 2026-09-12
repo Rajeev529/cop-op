@@ -1,6 +1,9 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n static %}
 {% block title %}{% trans "Confirm booking details" %} — Co-opSeva{% endblock %}
+{% block extra_head %}
+<script src="https://maps.googleapis.com/maps/api/js?key={{ GOOGLE_MAPS_API_KEY }}&libraries=places"></script>
+{% endblock %}
 {% block content %}
 <section class="section">
   <div class="container">
@@ -73,5 +76,17 @@
       </div>
     </div>
   </div>
-</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/address-autocomplete.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  initAddressAutocomplete('id_address', {
+    address: 'id_address',
+    city: 'id_city',
+    pincode: 'id_pincode'
+  });
+});
+</script>
 {% endblock %}

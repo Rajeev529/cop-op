@@ -22,11 +22,12 @@ class User(AbstractUser):
         PLATFORM_ADMIN = 'platform_admin', 'Platform Administrator'
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CUSTOMER)
-    phone_number = models.CharField(max_length=15, unique=True, db_index=True)
-    REQUIRED_FIELDS = ['phone_number']
+    phone_number = models.CharField(max_length=15, unique=True, db_index=True, null=True, blank=True)
     preferred_language = models.CharField(max_length=8, default='en')
     address = models.CharField(max_length=255, blank=True)
     city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True)
     profile_photo = models.ImageField(upload_to='profile_photos/', blank=True, null=True)
     emergency_contact = models.CharField(max_length=15, blank=True)
@@ -83,3 +84,18 @@ class OTPRequest(models.Model):
 
     def __str__(self):
         return f"OTP {self.code} for {self.phone_number}"
+
+
+class Notification(models.Model):
+    """System notifications for users (e.g., booking updates, approvals)."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    message = models.TextField()
+    link = models.CharField(max_length=255, blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Notification for {self.user} - {self.message[:30]}..."

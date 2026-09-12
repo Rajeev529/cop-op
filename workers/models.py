@@ -101,6 +101,28 @@ class SocietyInvite(models.Model):
         return f"Invite from {self.society.name} to {self.phone_number} ({self.get_status_display()})"
 
 
+class SocietyJoinRequest(models.Model):
+    """A verified worker requesting to join a specific society.
+    This request must be accepted by the society operator before the worker
+    is formally added to the society."""
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        ACCEPTED = 'accepted', 'Accepted'
+        REJECTED = 'rejected', 'Rejected'
+
+    worker = models.ForeignKey('WorkerProfile', on_delete=models.CASCADE, related_name='society_join_requests')
+    society = models.ForeignKey('Society', on_delete=models.CASCADE, related_name='join_requests')
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('worker', 'society')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.worker} requested to join {self.society.name} ({self.get_status_display()})"
+
+
 class Society(models.Model):
     # ... (previous fields)
     # (Adding this to Society or creating a separate model)
@@ -115,6 +137,7 @@ class Society(models.Model):
     name = models.CharField(max_length=150)
     city = models.CharField(max_length=100, default="Delhi")
     registration_number = models.CharField(max_length=50, blank=True)
+    description = models.TextField(blank=True, help_text="Detailed description of the society's mission and services.")
 
     federation = models.ForeignKey(
         Federation, on_delete=models.SET_NULL, null=True, blank=True, related_name='societies',
@@ -257,12 +280,6 @@ class WorkerProfile(models.Model):
     verification_officer = models.CharField(max_length=150, blank=True)
     verification_date = models.DateField(null=True, blank=True)
 
-    # Document Uploads for Admin Approval
-    certificate = models.FileField(upload_to='worker_docs/certificates/', blank=True, null=True,
-                                   help_text="Professional certification or skill certificate")
-    address_proof = models.FileField(upload_to='worker_docs/address_proofs/', blank=True, null=True,
-                                     help_text="Govt issued address proof")
-
     skill_grade = models.CharField(max_length=20, choices=SkillGrade.choices, default=SkillGrade.BASIC)
     years_experience = models.PositiveIntegerField(default=0)
     bio = models.TextField(blank=True)
@@ -291,32 +308,23 @@ class WorkerProfile(models.Model):
         return self.verification_status == self.VerificationStatus.VERIFIED
 
     def recommended_score(self, distance_km=2.0):
-        """FR-025 Recommended Ranking formula (Updated for Fairness):
-        Score = 0.30*Rating + 0.20*SkillMatch + 0.15*Availability + 0.10*Distance + 0.15*Fairness + 0.10*Reliability
-        Fairness penalizes workers who worked in the last 1-2 days to ensure equitable work distribution."""
-        rating_component = float(self.average_rating) / 5.0
-        skill_map = {'basic': .5, 'skilled': .65, 'advanced': .8, 'expert': .9, 'certified': 1.0}
-        skill_component = skill_map.get(self.skill_grade, .5)
-        availability_component = 1.0 if self.is_available_now else 0.3
+        """Strict Ranking: Based ONLY on Distance and Fairness (Past Bookings)."""
+        # Distance component (50% weight)
         distance_component = max(0.0, 1 - (distance_km / max(self.service_radius_km, 1)))
-        reliability_component = float(self.reliability_score)
 
-        # Fairness component: penalize very recent work (within 2 days)
+        # Fairness component: penalize recent work (50% weight)
         fairness_component = 1.0
         if self.last_worked_date:
             days_since_work = (timezone.localdate() - self.last_worked_date).days
             if days_since_work == 0:
-                fairness_component = 0.1
-            elif days_since_work == 1:
                 fairness_component = 0.4
-            elif days_since_work == 2:
+            elif days_since_work == 1:
                 fairness_component = 0.7
+            elif days_since_work == 2:
+                fairness_component = 0.9
 
-        score = (0.30 * rating_component + 0.20 * skill_component + 0.15 * availability_component
-                 + 0.10 * distance_component + 0.15 * fairness_component + 0.10 * reliability_component)
+        score = (0.50 * distance_component + 0.50 * fairness_component)
         return round(score * 100, 1)
-
-
 class WorkerDocument(models.Model):
     """FR-009 Document Upload."""
     class DocType(models.TextChoices):
